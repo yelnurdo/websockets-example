@@ -1,62 +1,90 @@
-'use client';
+"use client"
+import { useState, useEffect, FormEvent } from 'react';
 
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import useWebSocket from '@/lib/hooks/useWebsocket';
-import { useEffect, useState } from 'react';
-import Roadmap from '@/components/roadmap';
-export default function Home() {
-  const { messages, sendMessage } = useWebSocket('ws://localhost:5000');
-  const [prompt, setPrompt] = useState('');
+interface Chat {
+  userMessage: string;
+  botResponse: string;
+}
 
-  const handleSend = () => {
-    if (prompt.trim() !== '') {
-      sendMessage(prompt);
-      setPrompt('');
-    }
-  };
+const Home = () => {
+  const [message, setMessage] = useState<string>('');
+  const [chatHistory, setChatHistory] = useState<Chat[]>([]);
+  const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
-    console.log(messages);
-  }, [messages]);
+    // Establish WebSocket connection
+    const socket = new WebSocket('ws://localhost:5001');
+    setWs(socket);
+
+    socket.onopen = () => {
+      console.log('WebSocket connection opened');
+    };
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (Array.isArray(data)) {
+        setChatHistory(data);
+      } else {
+        // Append to current response
+        const newMessage = data[0];
+        setChatHistory((prevHistory) => [
+          ...prevHistory,
+          newMessage,
+        ]);
+      }
+    };
+
+    socket.onclose = () => {
+      console.log('WebSocket connection closed');
+    };
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, []);
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!message || !ws || ws.readyState !== WebSocket.OPEN) {
+      console.log('WebSocket is not open');
+      return;
+    }
+
+    console.log('Sending message:', message);
+    ws.send(message);
+    setMessage('');
+  };
 
   return (
-    <div className="flex flex-col w-full min-h-screen">
-      <header className="bg-primary text-primary-foreground py-6 px-4 md:px-6">
-        <h1 className="text-3xl font-bold">Roadmap Generator via WebSockets</h1>
-      </header>
-      <main className="flex-1 py-12 px-4 md:px-6">
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4">Enter Prompt</h2>
-          <div className="flex space-x-2">
-            <Input
-              type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Enter your prompt"
-              className="flex-1 px-4 py-2 border rounded-lg"
-            />
-            <Button
-              onClick={handleSend}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg"
-            >
-              Send
-            </Button>
-          </div>
+    <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center">
+      <div className="bg-gray-800 shadow-lg rounded-lg p-6 w-full max-w-md">
+        <h1 className="text-2xl font-bold mb-4 text-center">ChatGPT Clone</h1>
+        <div className="overflow-y-auto h-64 mb-4 p-4 bg-gray-700 rounded">
+          {chatHistory.map((chat, index) => (
+            <div key={index} className="mb-2">
+              <p className="text-blue-400"><strong>You:</strong> {chat.userMessage}</p>
+              <p className="text-gray-300"><strong>Bot:</strong> {chat.botResponse}</p>
+            </div>
+          ))}
         </div>
-        <div>
-          <h2 className="text-xl font-semibold mb-4">Messages</h2>
-          <div className="space-y-2">
-            {messages.map((message, index) => (
-              <Roadmap
-                key={index}
-                title={message.title}
-                details={message.details}
-              />
-            ))}
-          </div>
-        </div>
-      </main>
+        <form onSubmit={handleSubmit} className="flex">
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Type your message here..."
+            className="flex-1 p-2 bg-gray-600 text-white border border-gray-600 rounded-l"
+          />
+          <button type="submit" className="p-2 bg-blue-500 text-white rounded-r">Send</button>
+        </form>
+      </div>
     </div>
   );
 }
+
+export default Home;
+
